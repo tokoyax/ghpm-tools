@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style>
+      /* テキスト入力フィールドをダイアログの幅に合わせる */
+      input[type="text"] {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px;
+      }
+
+      /* フォーム全体の余白調整 */
+      form {
+        margin: 0;
+        padding: 16px;
+      }
+
+      /* 見出し */
+      h2 {
+        font-size: 18px;
+        margin-bottom: 10px;
+      }
+
+      /* ボタン */
+      button {
+        padding: 10px;
+        width: 100%;
+        background-color: #007BFF;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      button:hover {
+        background-color: #0056b3;
+      }
+
+      /* ローディングインジケーター */
+      #loading {
+        font-size: 14px;
+        color: gray;
+        margin-bottom: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>GitHub Token 設定</h2>
+    <div id="loading">読み込み中...</div>
+    <form id="settingsForm" style="display: none;">
+      <label for="token">GitHub Token:</label><br>
+      <input type="text" id="token" placeholder="GitHub Token"><br><br>
+      <button type="button" onclick="saveSettings()">保存</button>
+    </form>
+
+    <script>
+      function saveSettings() {
+        const token = document.getElementById("token").value;
+        google.script.run.withSuccessHandler(() => {
+          google.script.host.close();
+        }).saveGitHubToken(token);
+      }
+
+      // ページ読み込み時に既存の設定を取得して表示
+      document.addEventListener("DOMContentLoaded", function () {
+        google.script.run.withSuccessHandler(function (token) {
+          // フォームにトークンを反映（空白でも正常動作）
+          document.getElementById("token").value = token || "";
+
+          // ローディングを非表示、フォームを表示
+          document.getElementById("loading").style.display = "none";
+          document.getElementById("settingsForm").style.display = "block";
+        }).getGitHubToken();
+      });
+    </script>
+  </body>
+</html>
