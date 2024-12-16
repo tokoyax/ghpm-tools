@@ -215,17 +215,20 @@ function writeIssuesToSheet(issues, today) {
     ]);
   }
 
-  // 既存データを取得してMap化（Issue Number → State）
-  const existingData = sheet.getDataRange().getValues().reduce((map, row) => {
-    const issueNumber = row[1]; // Issue Number
-    const state = row[9];       // State
-    if (issueNumber) {
-      map[issueNumber] = state;
-    }
-    return map;
-  }, {});
+  // 最新の状態をMap化（Issue Number → Status）
+  const lastRow = sheet.getLastRow();
+  const existingData = {};
+  if (lastRow > 1) { // ヘッダー以外にデータがある場合
+    const lastDayData = sheet.getRange(2, 2, lastRow - 1, 2).getValues(); // Issue Number と Status
+    lastDayData.forEach(row => {
+      const [issueNumber, status] = row;
+      if (issueNumber) {
+        existingData[issueNumber] = status;
+      }
+    });
+  }
 
-  // データを追加
+  // データを比較して変更があるもののみ記録
   issues.forEach(issue => {
     const issueNumber = issue.number;
     const title = issue.title;
@@ -242,12 +245,12 @@ function writeIssuesToSheet(issues, today) {
     const state = issue.state; // "OPEN" or "CLOSED"
     const issueUrl = issue.url;
 
-    // `Closed` 状態が既に記録されている場合はスキップ
-    if (existingData[issueNumber] === "CLOSED") {
-      return;
+    // 前日のステータスと比較
+    if (existingData[issueNumber] === projectStatus) {
+      return; // ステータスが変わっていなければスキップ
     }
 
-    // 新しいデータを追加
+    // 変更がある場合のみ新しいデータを記録
     sheet.appendRow([
       today, issueNumber, title, projectStatus, labels,
       createdAt, closedAt, sprint, repositoryName, state, issueUrl
