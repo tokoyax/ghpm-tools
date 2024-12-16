@@ -14,7 +14,7 @@ function listStaleIssues() {
   
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(INPUT_SHEET_NAME);
   if (!sheet) {
-    SpreadsheetApp.getUi().alert(`シート "${INPUT_SHEET_NAME}" が見つかりません。`);
+    Logger.log(`シート "${INPUT_SHEET_NAME}" が見つかりません。`);
     return;
   }
 
@@ -34,7 +34,7 @@ function listStaleIssues() {
     issueNumberIndex === -1 || titleIndex === -1 || urlIndex === -1 ||
     statusIndex === -1 || createdAtIndex === -1 || importDateIndex === -1
   ) {
-    SpreadsheetApp.getUi().alert("必要な列が見つかりません。設定を確認してください。");
+    Logger.log("必要な列が見つかりません。設定を確認してください。");
     return;
   }
 
@@ -71,9 +71,9 @@ function listStaleIssues() {
 
   if (results.length > 1) {
     outputSheet.getRange(1, 1, results.length, results[0].length).setValues(results);
-    SpreadsheetApp.getUi().alert(`WIP最大日数を超えたIssueをリストアップしました (${results.length - 1} 件)。`);
+    Logger.log(`WIP最大日数を超えたIssueをリストアップしました (${results.length - 1} 件)。`);
   } else {
-    SpreadsheetApp.getUi().alert("WIP最大日数を超えたIssueは見つかりませんでした。");
+    Logger.log("WIP最大日数を超えたIssueは見つかりませんでした。");
   }
 }
 
@@ -98,5 +98,4 @@ function getSettingsFromSheet() {
   });
 
   return settings;
-} 
-
+}
