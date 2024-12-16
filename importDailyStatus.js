@@ -219,14 +219,15 @@ function writeIssuesToSheet(issues, today) {
   // 最新状態をMap化（Issue Number → 最新行データ）
   const lastRow = sheet.getLastRow();
   const latestDataMap = new Map(); // Issue Number をキーとした最新データのマップ
+
   if (lastRow > 1) {
     const allRows = sheet.getRange(2, 1, lastRow - 1, 11).getValues(); // 全データを取得
     allRows.forEach(row => {
       const importDateTime = new Date(row[0]); // Import DateTime
       const issueNumber = row[1]; // Issue Number
       if (issueNumber) {
-        // 既存データと比較して最新のデータを保持
-        if (!latestDataMap.has(issueNumber) || new Date(latestDataMap.get(issueNumber).row[0]) < importDateTime) {
+        // 最新データを保持
+        if (!latestDataMap.has(issueNumber) || latestDataMap.get(issueNumber).importDateTime < importDateTime) {
           latestDataMap.set(issueNumber, { importDateTime, row });
         }
       }
@@ -260,14 +261,27 @@ function writeIssuesToSheet(issues, today) {
     // 最新状態を比較
     const existingData = latestDataMap.get(issueNumber); // 最新行データ
     if (existingData) {
-      const existingRowWithoutImportDateTime = existingData.row.slice(1).join("|"); // Import DateTime を除く
+      const existingRow = existingData.row.slice(); // 最新行データのコピー
+      // `Closed At`フィールドをフォーマット
+      existingRow[5] = dateFormat(existingRow[5]); // Created At
+      existingRow[6] = existingRow[6] ? dateFormat(existingRow[6]) : ""; // Closed At
+
+      const existingRowWithoutImportDateTime = existingRow.slice(1).join("|"); // Import DateTime を除く
+
+      // ログ出力で比較対象を確認
+      Logger.log(`Comparing Issue ${issueNumber}`);
+      Logger.log(`Existing Row: ${existingRowWithoutImportDateTime}`);
+      Logger.log(`New Row:      ${newRowWithoutImportDateTime}`);
+
       if (existingRowWithoutImportDateTime === newRowWithoutImportDateTime) {
+        Logger.log(`Skipping Issue ${issueNumber}: No changes detected.`);
         return; // 完全に一致していれば記録しない
       }
     }
 
     // 変更がある場合のみ新しいデータを記録
     sheet.appendRow(newRow);
+    Logger.log(`Added Issue ${issueNumber}: Changes detected.`);
   });
 }
 
