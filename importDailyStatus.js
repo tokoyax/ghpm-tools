@@ -202,11 +202,12 @@ function writeIssuesToSheet(issues, today) {
   const sheetName = settings['日次履歴データ取得設定']['日次履歴データ出力シート名'] || 'DailyStatus';
   let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
 
+  // シートが存在しない場合は作成
   if (!sheet) {
     sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(sheetName);
   }
 
-  // ヘッダーがない場合、追加
+  // ヘッダーがない場合は作成
   if (sheet.getLastRow() === 0) {
     sheet.appendRow([
       "Import DateTime", "Issue Number", "Title", "Status", "Labels", 
@@ -214,41 +215,41 @@ function writeIssuesToSheet(issues, today) {
     ]);
   }
 
-  const existingData = sheet.getDataRange().getValues();
+  // 既存データを取得してMap化（Issue Number → State）
+  const existingData = sheet.getDataRange().getValues().reduce((map, row) => {
+    const issueNumber = row[1]; // Issue Number
+    const state = row[9];       // State
+    if (issueNumber) {
+      map[issueNumber] = state;
+    }
+    return map;
+  }, {});
 
+  // データを追加
   issues.forEach(issue => {
     const issueNumber = issue.number;
     const title = issue.title;
-
     const projectStatus = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].status
       ? issue.projectItems.nodes[0].status.name
       : "No Status";
-
     const sprint = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].sprint
       ? issue.projectItems.nodes[0].sprint.title
       : "No Sprint";
-
     const createdAt = dateFormat(issue.createdAt);
     const closedAt = issue.closedAt ? dateFormat(issue.closedAt) : "";
     const labels = issue.labels.nodes.map(label => label.name).join(", ");
     const repositoryName = issue.repository.name;
-    const state = issue.state;
+    const state = issue.state; // "OPEN" or "CLOSED"
     const issueUrl = issue.url;
 
-    // `Closed` 状態の重複確認
-    const isClosed = state === 'CLOSED';
-    const alreadyLogged = existingData.some(row => 
-      row[1] === issueNumber.toString() &&  // Issue Number が一致
-      row[9] === 'CLOSED' &&               // 状態が 'CLOSED'
-      row[10] === issueUrl                 // URLが一致
-    );
+    // `Closed` 状態が既に記録されている場合はスキップ
+    if (existingData[issueNumber] === "CLOSED") {
+      return;
+    }
 
-    // `Closed` 状態の重複をスキップ
-    if (isClosed && alreadyLogged) return;
-
-    // データをシートに追加
+    // 新しいデータを追加
     sheet.appendRow([
-      today, issueNumber, title, projectStatus, labels, 
+      today, issueNumber, title, projectStatus, labels,
       createdAt, closedAt, sprint, repositoryName, state, issueUrl
     ]);
   });
