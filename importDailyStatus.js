@@ -222,10 +222,13 @@ function writeIssuesToSheet(issues, today) {
   if (lastRow > 1) {
     const allRows = sheet.getRange(2, 1, lastRow - 1, 11).getValues(); // 全データを取得
     allRows.forEach(row => {
+      const importDateTime = new Date(row[0]); // Import DateTime
       const issueNumber = row[1]; // Issue Number
       if (issueNumber) {
-        const rowWithoutImportDateTime = row.slice(1).join("|"); // Import DateTime を除いたデータ
-        latestDataMap.set(issueNumber, rowWithoutImportDateTime);
+        // 既存データと比較して最新のデータを保持
+        if (!latestDataMap.has(issueNumber) || new Date(latestDataMap.get(issueNumber).row[0]) < importDateTime) {
+          latestDataMap.set(issueNumber, { row });
+        }
       }
     });
   }
@@ -255,9 +258,12 @@ function writeIssuesToSheet(issues, today) {
     const newRowWithoutImportDateTime = newRow.slice(1).join("|"); // Import DateTime を除いたデータ
 
     // 最新状態を比較
-    const existingRowWithoutImportDateTime = latestDataMap.get(issueNumber); // 最新行データ
-    if (existingRowWithoutImportDateTime === newRowWithoutImportDateTime) {
-      return; // 完全に一致していれば記録しない
+    const existingData = latestDataMap.get(issueNumber); // 最新行データ
+    if (existingData) {
+      const existingRowWithoutImportDateTime = existingData.row.slice(1).join("|"); // Import DateTime を除く
+      if (existingRowWithoutImportDateTime === newRowWithoutImportDateTime) {
+        return; // 完全に一致していれば記録しない
+      }
     }
 
     // 変更がある場合のみ新しいデータを記録
