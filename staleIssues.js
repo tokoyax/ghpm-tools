@@ -9,7 +9,8 @@ function listStaleIssues() {
   const staleIssues = identifyStaleIssues(
     dailyStatusData,
     settings.checkStatuses,
-    settings.maxWipDays
+    settings.maxWipDays,
+    settings.includeClosedIssues
   );
   writeStaleIssuesToSheet(staleIssues, settings.staleIssuesSheetName);
 }
@@ -34,6 +35,7 @@ function loadSettings() {
     staleIssuesSheetName: settings['WIPチェック設定']['出力先シート名'],
     maxWipDays: parseInt(settings['WIPチェック設定']['WIP最大日数'], 10),
     checkStatuses: settings['WIPチェック設定']['チェック対象ステータス'].split(',').map(status => status.trim()),
+    includeClosedIssues: parseInt(settings['WIPチェック設定']['ClosedIssueを含む'], 10) === 1,
   };
 }
 
@@ -51,7 +53,7 @@ function getDailyStatusData(sheetName) {
 //====================
 // Issueの滞留日数を計算
 //====================
-function identifyStaleIssues(dailyStatusData, checkStatuses, maxWipDays) {
+function identifyStaleIssues(dailyStatusData, checkStatuses, maxWipDays, includeClosedIssues) {
   const issueMap = groupBy(dailyStatusData, row => row[1]); // Issue Number (Index 1)
   const today = new Date();
 
@@ -62,12 +64,17 @@ function identifyStaleIssues(dailyStatusData, checkStatuses, maxWipDays) {
       createdAt: row[5],      // Created At (Index 5)
       url: row[10],           // Issue URL (Index 10)
       title: row[2],          // Title (Index 2)
+      state: row[9],          // State (Index 9: OPEN/CLOSED)
     }));
 
     const latestStatus = statusChanges[statusChanges.length - 1];
-    const filteredStatus = checkStatuses.includes(latestStatus.status);
+    const isClosed = latestStatus.state === 'CLOSED';
 
-    if (!filteredStatus) return []; // チェック対象ステータスでない場合は除外
+    // ClosedIssueを含まない場合は除外
+    if (isClosed && !includeClosedIssues) return [];
+
+    // チェック対象ステータスに含まれていない場合は除外
+    if (!checkStatuses.includes(latestStatus.status)) return [];
 
     const earliestDate = getEarliestDateForStatus(statusChanges, latestStatus.status);
     const wipDays = calculateWipDays(today, earliestDate);
