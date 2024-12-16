@@ -194,8 +194,9 @@ function filterIssues(issues, includeLabels, excludeLabels) {
   });
 }
 
+
 //====================
-// Issueデータをスプレッドシートに書き込む関数
+// Issue書き込み関数
 //====================
 function writeIssuesToSheet(issues, today) {
   const settings = getSettingsFromSheet();
@@ -215,13 +216,20 @@ function writeIssuesToSheet(issues, today) {
     ]);
   }
 
-  // 最新の状態をMap化（行データからImport DateTimeを除く文字列をキーとする）
+  // 最新状態をMap化（Issue Number → 最新行データ）
   const lastRow = sheet.getLastRow();
-  const existingData = new Set(); // 全行データを文字列として保持
+  const latestDataMap = new Map(); // Issue Number をキーとした最新データのマップ
   if (lastRow > 1) {
-    const allRows = sheet.getRange(2, 2, lastRow - 1, 10).getValues(); // today列を除いたデータ
+    const allRows = sheet.getRange(2, 1, lastRow - 1, 11).getValues(); // 全データを取得
     allRows.forEach(row => {
-      existingData.add(row.join("|")); // 各行を文字列化してSetに追加
+      const importDateTime = new Date(row[0]); // Import DateTime
+      const issueNumber = row[1]; // Issue Number
+      if (issueNumber) {
+        // 既存データと比較して最新のデータを保持
+        if (!latestDataMap.has(issueNumber) || latestDataMap.get(issueNumber).importDateTime < importDateTime) {
+          latestDataMap.set(issueNumber, { importDateTime, row });
+        }
+      }
     });
   }
 
@@ -242,22 +250,24 @@ function writeIssuesToSheet(issues, today) {
     const state = issue.state; // "OPEN" or "CLOSED"
     const issueUrl = issue.url;
 
-    // todayを除く行データを文字列化
-    const newRowWithoutToday = [
-      issueNumber, title, projectStatus, labels,
+    // 新しい行データを構成
+    const newRow = [
+      today, issueNumber, title, projectStatus, labels,
       createdAt, closedAt, sprint, repositoryName, state, issueUrl
-    ].join("|");
+    ];
 
-    // Setで確認（既存データと一致する場合はスキップ）
-    if (existingData.has(newRowWithoutToday)) {
-      return; // 完全一致の場合スキップ
+    // 最新状態を比較
+    const existingData = latestDataMap.get(issueNumber); // 最新行データを取得
+    if (existingData) {
+      const existingRowWithoutImportDateTime = existingData.row.slice(1).join("|"); // Import DateTime を除く
+      const newRowWithoutImportDateTime = newRow.slice(1).join("|"); // Import DateTime を除く
+      if (existingRowWithoutImportDateTime === newRowWithoutImportDateTime) {
+        return; // ステータス等が変わっていなければスキップ
+      }
     }
 
     // 変更がある場合のみ新しいデータを記録
-    sheet.appendRow([
-      today, issueNumber, title, projectStatus, labels,
-      createdAt, closedAt, sprint, repositoryName, state, issueUrl
-    ]);
+    sheet.appendRow(newRow);
   });
 }
 
