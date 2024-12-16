@@ -215,16 +215,13 @@ function writeIssuesToSheet(issues, today) {
     ]);
   }
 
-  // 最新の状態をMap化（Issue Number → Status）
+  // 最新の状態をMap化（行データからImport DateTimeを除く文字列をキーとする）
   const lastRow = sheet.getLastRow();
-  const existingData = {};
-  if (lastRow > 1) { // ヘッダー以外にデータがある場合
-    const lastDayData = sheet.getRange(2, 2, lastRow - 1, 2).getValues(); // Issue Number と Status
-    lastDayData.forEach(row => {
-      const [issueNumber, status] = row;
-      if (issueNumber) {
-        existingData[issueNumber] = status;
-      }
+  const existingData = new Set(); // 全行データを文字列として保持
+  if (lastRow > 1) {
+    const allRows = sheet.getRange(2, 2, lastRow - 1, 10).getValues(); // today列を除いたデータ
+    allRows.forEach(row => {
+      existingData.add(row.join("|")); // 各行を文字列化してSetに追加
     });
   }
 
@@ -245,9 +242,15 @@ function writeIssuesToSheet(issues, today) {
     const state = issue.state; // "OPEN" or "CLOSED"
     const issueUrl = issue.url;
 
-    // 前日のステータスと比較
-    if (existingData[issueNumber] === projectStatus) {
-      return; // ステータスが変わっていなければスキップ
+    // todayを除く行データを文字列化
+    const newRowWithoutToday = [
+      issueNumber, title, projectStatus, labels,
+      createdAt, closedAt, sprint, repositoryName, state, issueUrl
+    ].join("|");
+
+    // Setで確認（既存データと一致する場合はスキップ）
+    if (existingData.has(newRowWithoutToday)) {
+      return; // 完全一致の場合スキップ
     }
 
     // 変更がある場合のみ新しいデータを記録
