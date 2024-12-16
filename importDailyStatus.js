@@ -206,12 +206,15 @@ function writeIssuesToSheet(issues, today) {
     sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(sheetName);
   }
 
+  // ヘッダーがない場合、追加
   if (sheet.getLastRow() === 0) {
     sheet.appendRow([
       "Import DateTime", "Issue Number", "Title", "Status", "Labels", 
       "Created At", "Closed At", "Sprint", "Repository", "State", "Issue URL"
     ]);
   }
+
+  const existingData = sheet.getDataRange().getValues();
 
   issues.forEach(issue => {
     const issueNumber = issue.number;
@@ -222,18 +225,28 @@ function writeIssuesToSheet(issues, today) {
       : "No Status";
 
     const sprint = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].sprint
-      ? issue.projectItems.nodes[0].sprint.title // 修正ポイント：sprint.title を取得
+      ? issue.projectItems.nodes[0].sprint.title
       : "No Sprint";
 
     const createdAt = dateFormat(issue.createdAt);
     const closedAt = issue.closedAt ? dateFormat(issue.closedAt) : "";
     const labels = issue.labels.nodes.map(label => label.name).join(", ");
     const repositoryName = issue.repository.name;
-    const repositoryUrl = issue.repository.url;
     const state = issue.state;
     const issueUrl = issue.url;
 
-    // シートにデータを書き込む
+    // `Closed` 状態の重複確認
+    const isClosed = state === 'CLOSED';
+    const alreadyLogged = existingData.some(row => 
+      row[1] === issueNumber.toString() &&  // Issue Number が一致
+      row[9] === 'CLOSED' &&               // 状態が 'CLOSED'
+      row[10] === issueUrl                 // URLが一致
+    );
+
+    // `Closed` 状態の重複をスキップ
+    if (isClosed && alreadyLogged) return;
+
+    // データをシートに追加
     sheet.appendRow([
       today, issueNumber, title, projectStatus, labels, 
       createdAt, closedAt, sprint, repositoryName, state, issueUrl
@@ -246,7 +259,6 @@ function writeIssuesToSheet(issues, today) {
 //====================
 function dateFormat(utcDateStr) {
   const date = new Date(utcDateStr);
-  date.setHours(date.getHours());
   
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
