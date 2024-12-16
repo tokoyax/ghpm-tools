@@ -227,7 +227,7 @@ function writeIssuesToSheet(issues, today) {
       if (issueNumber) {
         // 既存データと比較して最新のデータを保持
         if (!latestDataMap.has(issueNumber) || new Date(latestDataMap.get(issueNumber).row[0]) < importDateTime) {
-          latestDataMap.set(issueNumber, { row });
+          latestDataMap.set(issueNumber, { importDateTime, row });
         }
       }
     });
