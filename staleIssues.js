@@ -118,7 +118,7 @@ function writeStaleIssuesToSheet(issues, sheetName) {
 
   // ヘッダー行を書き込む
   sheet.clear();
-  sheet.appendRow(['Issue Number', 'Title', 'URL', 'Status', 'WIP days', 'Created At']);
+  //sheet.appendRow(['Issue Number', 'Title', 'URL', 'Status', 'WIP days', 'Created At']);
 
   // データを書き込む
   issues.forEach(issue => {
