@@ -116,9 +116,16 @@ function calculateWipDays(today, startDate) {
 function writeStaleIssuesToSheet(issues, sheetName) {
   const sheet = getOrCreateSheet(sheetName);
 
-  // ヘッダー行を書き込む
-  sheet.clear();
-  //sheet.appendRow(['Issue Number', 'Title', 'URL', 'Status', 'WIP days', 'Created At']);
+  // シートの既存データを取得
+  const lastRow = sheet.getLastRow();
+
+  // ヘッダーが存在しない場合のみ追加する
+  if (lastRow === 0) {
+    sheet.appendRow(['Issue Number', 'Title', 'URL', 'Status', 'WIP days', 'Created At']);
+  }
+
+  // 既存データをクリアせず、ヘッダーの下にデータを書き込む
+  sheet.getRange(2, 1, sheet.getLastRow(), sheet.getLastColumn()).clearContent(); // 2行目以降をクリア
 
   // データを書き込む
   issues.forEach(issue => {
