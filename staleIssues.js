@@ -62,9 +62,11 @@ function identifyStaleIssues(dailyStatusData, checkStatuses, maxWipDays, include
       date: new Date(row[0]), // Import DateTime (Index 0)
       status: row[3],         // Status (Index 3)
       createdAt: row[5],      // Created At (Index 5)
+      closedAt: row[6],       // Closed At (Index 6)
       url: row[10],           // Issue URL (Index 10)
       title: row[2],          // Title (Index 2)
       state: row[9],          // State (Index 9: OPEN/CLOSED)
+      labels: row[4],         // Labels (Index 4)
     }));
 
     const latestStatus = statusChanges[statusChanges.length - 1];
@@ -87,6 +89,8 @@ function identifyStaleIssues(dailyStatusData, checkStatuses, maxWipDays, include
         status: latestStatus.status,
         wipDays: wipDays,
         createdAt: latestStatus.createdAt,
+        closedAt: latestStatus.closedAt || '', // Closed At
+        labels: latestStatus.labels,          // Labels
       }];
     }
     return [];
@@ -121,7 +125,7 @@ function writeStaleIssuesToSheet(issues, sheetName) {
 
   // ヘッダーが存在しない場合のみ追加する
   if (lastRow === 0) {
-    sheet.appendRow(['Issue Number', 'Title', 'URL', 'Status', 'WIP days', 'Created At']);
+    sheet.appendRow(['Issue Number', 'Title', 'URL', 'Status', 'WIP days', 'Created At', 'Closed At', 'Labels']);
   }
 
   // 既存データをクリアせず、ヘッダーの下にデータを書き込む
@@ -136,6 +140,8 @@ function writeStaleIssuesToSheet(issues, sheetName) {
       issue.status,
       issue.wipDays,
       issue.createdAt,
+      issue.closedAt, // Closed At
+      issue.labels,    // Labels
     ]);
   });
 }
