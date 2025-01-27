@@ -37,8 +37,8 @@ function addEstimateColumnToDailyStatus() {
   issues.forEach(issue => {
     const issueNumber = issue.number;
     const estimate = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].estimate
-      ? issue.projectItems.nodes[0].estimate.name
-      : "";
+      ? issue.projectItems.nodes[0].estimate.number
+      : null; // 数値型のデータを取得
 
     // 行を検索して更新
     for (let i = 0; i < rows.length; i++) {
@@ -90,7 +90,7 @@ function fetchIssuesPage(owner, repo, token, afterCursor = null) {
                   ... on ProjectV2ItemFieldIterationValue { title }
                 }
                 estimate: fieldValueByName(name: "Estimate") {
-                  ... on ProjectV2ItemFieldSingleSelectValue { name }
+                  ... on ProjectV2ItemFieldNumberValue { number } // 数値型に変更
                 }
               }
             }
