@@ -1,4 +1,4 @@
-function addSizeColumnToDailyStatus() {
+function addEstimateColumnToDailyStatus() {
   const sheetName = 'DailyStatus';
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
 
@@ -25,8 +25,8 @@ function addSizeColumnToDailyStatus() {
 
   issues.forEach(issue => {
     const issueNumber = issue.number;
-    const estimate = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].size
-      ? issue.projectItems.nodes[0].size.name
+    const estimate = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].estimate
+      ? issue.projectItems.nodes[0].estimate.name
       : "";
 
     const rows = sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues();
@@ -53,7 +53,7 @@ function fetchIssuesWithSprint(owner, repo, token, sprintName) {
                 sprint: fieldValueByName(name: $sprintName) {
                   ... on ProjectV2ItemFieldIterationValue { title }
                 }
-                size: fieldValueByName(name: "Estimate") {
+                estimate: fieldValueByName(name: "Estimate") {
                   ... on ProjectV2ItemFieldSingleSelectValue { name }
                 }
               }
