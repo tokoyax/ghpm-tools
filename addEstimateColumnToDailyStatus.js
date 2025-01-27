@@ -38,9 +38,12 @@ function addEstimateColumnToDailyStatus() {
       const sheetIssueNumber = row[0]; // "Issue Number"列の値
       const sheetSprint = row[sprintColumnIndex - 1]; // "Sprint"列の値
 
-      if (sheetIssueNumber == issueNumber && sheetSprint === targetSprint) {
-        sheet.getRange(i + 2, estimateColumnIndex).setValue(estimate); // 該当セルにEstimate値を設定
-        Logger.log(`Updated Issue Number: ${issueNumber}, Sprint: ${sheetSprint}, Estimate: ${estimate}`);
+      if (sheetIssueNumber == issueNumber) {
+        Logger.log(`Matched Issue Number: ${sheetIssueNumber}, Sheet Sprint: ${sheetSprint}, Target Sprint: ${targetSprint}`);
+        if (sheetSprint === targetSprint) {
+          Logger.log(`Sprint matched for Issue: ${sheetIssueNumber}`);
+          sheet.getRange(i + 2, estimateColumnIndex).setValue(estimate);
+        }
       }
     });
   });
