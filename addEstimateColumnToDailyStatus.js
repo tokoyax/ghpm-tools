@@ -87,10 +87,14 @@ function fetchIssuesPage(owner, repo, token, afterCursor = null) {
             projectItems(first: 1) {
               nodes {
                 sprint: fieldValueByName(name: "Sprint") {
-                  ... on ProjectV2ItemFieldIterationValue { title }
+                  ... on ProjectV2ItemFieldIterationValue {
+                    title
+                  }
                 }
                 estimate: fieldValueByName(name: "Estimate") {
-                  ... on ProjectV2ItemFieldNumberValue { number } // 数値型に変更
+                  ... on ProjectV2ItemFieldNumberValue {
+                    number
+                  }
                 }
               }
             }
