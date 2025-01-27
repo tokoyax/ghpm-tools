@@ -151,6 +151,9 @@ function fetchIssues(owner, repo, token, afterCursor = null) {
                 status: fieldValueByName(name: "Status") {
                   ... on ProjectV2ItemFieldSingleSelectValue { name }
                 }
+                estimate: fieldValueByName(name: "Estimate") {
+                  ... on ProjectV2ItemFieldNumberValue { number }
+                }
               }
             }
             repository { name url }
@@ -207,7 +210,7 @@ function writeIssuesToSheet(issues, today) {
   if (!sheet) {
     sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(sheetName);
     sheet.appendRow([
-      "Import DateTime", "Issue Number", "Title", "Status", "Labels", "Size",
+      "Import DateTime", "Issue Number", "Title", "Status", "Labels", "Estimate",
       "Created At", "Closed At", "Sprint", "Repository", "State", "Issue URL"
     ]);
   }
@@ -216,7 +219,7 @@ function writeIssuesToSheet(issues, today) {
   const latestDataMap = new Map();
 
   if (lastRow > 1) {
-    const allRows = sheet.getRange(2, 1, lastRow - 1, 12).getValues();
+    const allRows = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
     allRows.forEach(row => {
       const importDateTime = new Date(row[0]);
       const issueNumber = row[1];
@@ -231,29 +234,22 @@ function writeIssuesToSheet(issues, today) {
   issues.forEach(issue => {
     const issueNumber = issue.number;
     const title = issue.title;
-    const projectStatus = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].status
-      ? issue.projectItems.nodes[0].status.name
-      : "No Status";
-    const sprint = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].sprint
-      ? issue.projectItems.nodes[0].sprint.title
-      : "No Sprint";
-    const size = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].size
-      ? issue.projectItems.nodes[0].size.name
-      : "";
+    const projectStatus = issue.projectItems.nodes[0]?.status?.name || "No Status";
+    const sprint = issue.projectItems.nodes[0]?.sprint?.title || "No Sprint";
+    const estimate = issue.projectItems.nodes[0]?.estimate?.number || ""; // Estimateデータを取得
     const createdAt = dateFormat(issue.createdAt);
     const closedAt = issue.closedAt ? dateFormat(issue.closedAt) : "";
     const labels = issue.labels.nodes.map(label => label.name).join(", ");
     const repositoryName = issue.repository.name;
     const state = issue.state; // "OPEN" or "CLOSED"
     const issueUrl = issue.url;
-
     const newRow = [
-      today, issueNumber, title, projectStatus, labels, size,
+      today, issueNumber, title, projectStatus, labels, estimate, // Estimateを含む
       createdAt, closedAt, sprint, repositoryName, state, issueUrl
     ];
     const newRowWithoutImportDateTime = newRow.slice(1).join("|");
-
     const existingData = latestDataMap.get(issueNumber);
+
     if (existingData) {
       const existingRow = existingData.row.slice();
       existingRow[6] = dateFormat(existingRow[6]); // Created At
@@ -261,22 +257,20 @@ function writeIssuesToSheet(issues, today) {
       const existingRowWithoutImportDateTime = existingRow.slice(1).join("|");
 
       // ログ出力: 比較ログ
-      Logger.log(`Comparing Issue ${issueNumber}`);
-      Logger.log(`Existing Row: ${existingRowWithoutImportDateTime}`);
-      Logger.log(`New Row:      ${newRowWithoutImportDateTime}`);
+      Logger.log(`Comparing Issue: ${issueNumber}`);
+      Logger.log(`Existing Row:    ${existingRowWithoutImportDateTime}`);
+      Logger.log(`New Row:         ${newRowWithoutImportDateTime}`);
 
       if (existingRowWithoutImportDateTime === newRowWithoutImportDateTime) {
         Logger.log(`Skipping Issue ${issueNumber}: No changes detected.`);
         return;
       }
     }
-
-    // 変更がある場合のみ新しいデータを記録
     sheet.appendRow(newRow);
-
-    // ログ出力: 追加された行
     Logger.log(`Added Issue ${issueNumber}: Changes detected.`);
   });
+
+  Logger.log("DailyStatusへのデータ書き込みが完了しました。");
 }
 
 //====================
