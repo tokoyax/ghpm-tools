@@ -8,14 +8,14 @@ function addSizeColumnToDailyStatus() {
   }
 
   const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  if (header.includes('Size')) {
-    Logger.log('Sizeカラムは既に存在します。');
+  if (header.includes('Estimate')) {
+    Logger.log('Estimateカラムは既に存在します。');
     return;
   }
 
-  const sizeColumnIndex = header.indexOf('Labels') + 2;
-  sheet.insertColumnAfter(sizeColumnIndex - 1);
-  sheet.getRange(1, sizeColumnIndex).setValue('Size');
+  const estimateColumnIndex = header.indexOf('Labels') + 2;
+  sheet.insertColumnAfter(estimateColumnIndex - 1);
+  sheet.getRange(1, estimateColumnIndex).setValue('Estimate');
 
   const settings = getSettingsFromSheet();
   const token = getGitHubToken();
@@ -25,20 +25,20 @@ function addSizeColumnToDailyStatus() {
 
   issues.forEach(issue => {
     const issueNumber = issue.number;
-    const size = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].size
+    const estimate = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].size
       ? issue.projectItems.nodes[0].size.name
       : "";
 
     const rows = sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues();
     for (let i = 0; i < rows.length; i++) {
       if (rows[i][0] == issueNumber) {
-        sheet.getRange(i + 2, sizeColumnIndex).setValue(size);
+        sheet.getRange(i + 2, estimateColumnIndex).setValue(estimate);
         break;
       }
     }
   });
 
-  Logger.log('Sizeカラムの追加とデータ更新が完了しました。');
+  Logger.log('Estimateカラムの追加とデータ更新が完了しました。');
 }
 
 function fetchIssuesWithSprint(owner, repo, token, sprintName) {
@@ -53,7 +53,7 @@ function fetchIssuesWithSprint(owner, repo, token, sprintName) {
                 sprint: fieldValueByName(name: $sprintName) {
                   ... on ProjectV2ItemFieldIterationValue { title }
                 }
-                size: fieldValueByName(name: "Size") {
+                size: fieldValueByName(name: "Estimate") {
                   ... on ProjectV2ItemFieldSingleSelectValue { name }
                 }
               }
@@ -63,6 +63,7 @@ function fetchIssuesWithSprint(owner, repo, token, sprintName) {
       }
     }
   `;
+
   const variables = { owner, repo, sprintName };
   const options = {
     method: 'post',
@@ -80,8 +81,5 @@ function fetchIssuesWithSprint(owner, repo, token, sprintName) {
     throw new Error("GraphQL query error.");
   }
 
-  return data.data.repository.issues.nodes.filter(issue => {
-    const sprint = issue.projectItems.nodes[0]?.sprint?.title || "";
-    return sprint === sprintName;
-  });
+  return data.data.repository.issues.nodes;
 }
