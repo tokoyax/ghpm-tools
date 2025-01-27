@@ -31,6 +31,11 @@ function addEstimateColumnToDailyStatus() {
   const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, header.length).getValues();
 
   issues.forEach(issue => {
+    const sprintTitle = issue.projectItems.nodes[0]?.sprint?.title || "N/A";
+    Logger.log(`Issue Number: ${issue.number}, Retrieved Sprint: ${sprintTitle}, Target Sprint: ${targetSprint}`);
+  });
+
+  issues.forEach(issue => {
     const issueNumber = issue.number;
     const estimate = issue.projectItems.nodes[0]?.estimate?.number || ""; // 数値型として扱う
 
