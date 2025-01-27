@@ -24,23 +24,20 @@ function addEstimateColumnToDailyStatus() {
   const targetSprint = 'Sprint 51';
   const issues = fetchAllIssuesWithSprint(owner, repo, token, targetSprint);
 
-  const sprintColumnIndex = header.indexOf('Sprint') + 1; // Sprint列のインデックス
-  const estimateColumnIndex = header.indexOf('Estimate') + 1;
+  // "Issue Number" と "Sprint" 列のインデックスを取得
+  const issueNumberColumnIndex = header.indexOf('Issue Number') + 1; // "Issue Number" 列
+  const sprintColumnIndex = header.indexOf('Sprint') + 1; // "Sprint" 列
+  const estimateColumnIndex = header.indexOf('Estimate') + 1; // "Estimate" 列
 
   // 既存の行データを取得
   const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, header.length).getValues();
-
-  issues.forEach(issue => {
-    const sprintTitle = issue.projectItems.nodes[0]?.sprint?.title || "N/A";
-    Logger.log(`Issue Number: ${issue.number}, Retrieved Sprint: ${sprintTitle}, Target Sprint: ${targetSprint}`);
-  });
 
   issues.forEach(issue => {
     const issueNumber = issue.number;
     const estimate = issue.projectItems.nodes[0]?.estimate?.number || ""; // 数値型として扱う
 
     rows.forEach((row, i) => {
-      const sheetIssueNumber = row[0]; // "Issue Number"列の値
+      const sheetIssueNumber = row[issueNumberColumnIndex - 1]; // "Issue Number"列の値
       const sheetSprint = row[sprintColumnIndex - 1]; // "Sprint"列の値
 
       if (sheetIssueNumber == issueNumber) {
