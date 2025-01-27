@@ -7,46 +7,42 @@ function addEstimateColumnToDailyStatus() {
     return;
   }
 
-  // ヘッダーを取得
-  const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  let header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
 
-  // Estimate カラムが存在しない場合は追加
-  let estimateColumnIndex = header.indexOf('Estimate') + 1;
-  if (estimateColumnIndex === 0) { // 'Estimate' が見つからない場合
-    estimateColumnIndex = header.indexOf('Labels') + 2;
+  // "Estimate" カラムが存在しない場合は追加
+  if (!header.includes('Estimate')) {
+    const estimateColumnIndex = header.indexOf('Labels') + 2;
     sheet.insertColumnAfter(estimateColumnIndex - 1);
     sheet.getRange(1, estimateColumnIndex).setValue('Estimate');
+    header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]; // 再取得
   }
 
   const settings = getSettingsFromSheet();
   const token = getGitHubToken();
   const owner = settings['基本設定']['リポジトリのオーナー'];
   const repo = settings['基本設定']['リポジトリ名'];
-  const issues = fetchAllIssuesWithSprint(owner, repo, token, 'Sprint 51');
+  const targetSprint = 'Sprint 51';
+  const issues = fetchAllIssuesWithSprint(owner, repo, token, targetSprint);
 
-  if (issues.length === 0) {
-    Logger.log('該当するIssueが見つかりませんでした。');
-    return;
-  }
+  const sprintColumnIndex = header.indexOf('Sprint') + 1; // Sprint列のインデックス
+  const estimateColumnIndex = header.indexOf('Estimate') + 1;
 
-  // 全ての行を取得（2行目以降）
-  const rows = sheet.getLastRow() > 1
-    ? sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues()
-    : [];
+  // 既存の行データを取得
+  const rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, header.length).getValues();
 
   issues.forEach(issue => {
     const issueNumber = issue.number;
-    const estimate = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].estimate
-      ? issue.projectItems.nodes[0].estimate.number
-      : null; // 数値型のデータを取得
+    const estimate = issue.projectItems.nodes[0]?.estimate?.number || ""; // 数値型として扱う
 
-    // 行を検索して更新
-    for (let i = 0; i < rows.length; i++) {
-      if (rows[i][0] == issueNumber) {
-        sheet.getRange(i + 2, estimateColumnIndex).setValue(estimate);
-        break;
+    rows.forEach((row, i) => {
+      const sheetIssueNumber = row[0]; // "Issue Number"列の値
+      const sheetSprint = row[sprintColumnIndex - 1]; // "Sprint"列の値
+
+      if (sheetIssueNumber == issueNumber && sheetSprint === targetSprint) {
+        sheet.getRange(i + 2, estimateColumnIndex).setValue(estimate); // 該当セルにEstimate値を設定
+        Logger.log(`Updated Issue Number: ${issueNumber}, Sprint: ${sheetSprint}, Estimate: ${estimate}`);
       }
-    }
+    });
   });
 
   Logger.log('Estimateカラムの追加とデータ更新が完了しました。');
@@ -59,16 +55,24 @@ function fetchAllIssuesWithSprint(owner, repo, token, sprintName) {
 
   while (hasNextPage) {
     const { issues, pageInfo } = fetchIssuesPage(owner, repo, token, endCursor);
+    if (!issues) {
+      Logger.log('Issues not found in the current page.');
+      break;
+    }
     allIssues = allIssues.concat(issues);
     hasNextPage = pageInfo.hasNextPage;
     endCursor = pageInfo.endCursor;
   }
 
-  // フィルタリング（スプリント名で絞り込み）
+  // デバッグ用ログ出力
+  allIssues.forEach(issue => {
+    const sprintTitle = issue.projectItems.nodes[0]?.sprint?.title || "N/A";
+    Logger.log(`Issue Number: ${issue.number}, Sprint: ${sprintTitle}`);
+  });
+
+  // 指定したSprintでフィルタリング
   return allIssues.filter(issue => {
-    const sprint = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].sprint
-      ? issue.projectItems.nodes[0].sprint.title
-      : "";
+    const sprint = issue.projectItems.nodes[0]?.sprint?.title || "";
     return sprint === sprintName;
   });
 }
@@ -122,6 +126,7 @@ function fetchIssuesPage(owner, repo, token, afterCursor = null) {
     throw new Error("GraphQL query error.");
   }
 
+  Logger.log(`Fetched ${data.data.repository.issues.nodes.length} issues in current page.`);
   return {
     issues: data.data.repository.issues.nodes,
     pageInfo: data.data.repository.issues.pageInfo,
