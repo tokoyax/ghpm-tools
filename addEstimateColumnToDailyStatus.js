@@ -7,9 +7,13 @@ function addEstimateColumnToDailyStatus() {
     return;
   }
 
+  // ヘッダーを取得
   const header = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  if (!header.includes('Estimate')) {
-    const estimateColumnIndex = header.indexOf('Labels') + 2;
+
+  // Estimate カラムが存在しない場合は追加
+  let estimateColumnIndex = header.indexOf('Estimate') + 1;
+  if (estimateColumnIndex === 0) { // 'Estimate' が見つからない場合
+    estimateColumnIndex = header.indexOf('Labels') + 2;
     sheet.insertColumnAfter(estimateColumnIndex - 1);
     sheet.getRange(1, estimateColumnIndex).setValue('Estimate');
   }
@@ -20,16 +24,26 @@ function addEstimateColumnToDailyStatus() {
   const repo = settings['基本設定']['リポジトリ名'];
   const issues = fetchAllIssuesWithSprint(owner, repo, token, 'Sprint 51');
 
+  if (issues.length === 0) {
+    Logger.log('該当するIssueが見つかりませんでした。');
+    return;
+  }
+
+  // 全ての行を取得（2行目以降）
+  const rows = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues()
+    : [];
+
   issues.forEach(issue => {
     const issueNumber = issue.number;
     const estimate = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].estimate
       ? issue.projectItems.nodes[0].estimate.name
       : "";
 
-    const rows = sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues();
+    // 行を検索して更新
     for (let i = 0; i < rows.length; i++) {
       if (rows[i][0] == issueNumber) {
-        sheet.getRange(i + 2, header.indexOf('Estimate') + 1).setValue(estimate);
+        sheet.getRange(i + 2, estimateColumnIndex).setValue(estimate);
         break;
       }
     }
