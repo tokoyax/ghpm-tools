@@ -49,7 +49,7 @@ function fetchIssuesWithSprint(owner, repo, token, sprintName) {
             number
             projectItems(first: 1) {
               nodes {
-                sprint: fieldValueByName(name: "Sprint") {
+                sprint: fieldValueByName(name: $sprintName) {
                   ... on ProjectV2ItemFieldIterationValue { title }
                 }
                 size: fieldValueByName(name: "Size") {
