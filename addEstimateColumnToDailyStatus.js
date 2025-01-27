@@ -44,18 +44,24 @@ function fetchAllIssuesWithSprint(owner, repo, token, sprintName) {
   let endCursor = null;
 
   while (hasNextPage) {
-    const { issues, pageInfo } = fetchIssuesPage(owner, repo, token, sprintName, endCursor);
+    const { issues, pageInfo } = fetchIssuesPage(owner, repo, token, endCursor);
     allIssues = allIssues.concat(issues);
     hasNextPage = pageInfo.hasNextPage;
     endCursor = pageInfo.endCursor;
   }
 
-  return allIssues;
+  // フィルタリング（スプリント名で絞り込み）
+  return allIssues.filter(issue => {
+    const sprint = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].sprint
+      ? issue.projectItems.nodes[0].sprint.title
+      : "";
+    return sprint === sprintName;
+  });
 }
 
-function fetchIssuesPage(owner, repo, token, sprintName, afterCursor = null) {
+function fetchIssuesPage(owner, repo, token, afterCursor = null) {
   const query = `
-    query ($owner: String!, $repo: String!, $sprintName: String!, $after: String) {
+    query ($owner: String!, $repo: String!, $after: String) {
       repository(owner: $owner, name: $repo) {
         issues(first: 100, after: $after) {
           pageInfo {
@@ -80,7 +86,7 @@ function fetchIssuesPage(owner, repo, token, sprintName, afterCursor = null) {
     }
   `;
 
-  const variables = { owner, repo, sprintName, after: afterCursor };
+  const variables = { owner, repo, after: afterCursor };
   const options = {
     method: 'post',
     headers: {
@@ -98,16 +104,8 @@ function fetchIssuesPage(owner, repo, token, sprintName, afterCursor = null) {
     throw new Error("GraphQL query error.");
   }
 
-  // フィルタリング（スプリント名で絞り込み）
-  const filteredIssues = data.data.repository.issues.nodes.filter(issue => {
-    const sprint = issue.projectItems.nodes.length > 0 && issue.projectItems.nodes[0].sprint
-      ? issue.projectItems.nodes[0].sprint.title
-      : "";
-    return sprint === sprintName;
-  });
-
   return {
-    issues: filteredIssues,
+    issues: data.data.repository.issues.nodes,
     pageInfo: data.data.repository.issues.pageInfo,
   };
 }
