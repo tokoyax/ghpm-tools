@@ -61,11 +61,11 @@ function identifyStaleIssues(dailyStatusData, checkStatuses, maxWipDays, include
     const statusChanges = issueRows.map(row => ({
       date: new Date(row[0]), // Import DateTime (Index 0)
       status: row[3],         // Status (Index 3)
-      createdAt: row[5],      // Created At (Index 5)
-      closedAt: row[6],       // Closed At (Index 6)
-      url: row[10],           // Issue URL (Index 10)
+      createdAt: row[6],      // Created At (Index 6)
+      closedAt: row[7],       // Closed At (Index 7)
+      url: row[11],           // Issue URL (Index 11)
       title: row[2],          // Title (Index 2)
-      state: row[9],          // State (Index 9: OPEN/CLOSED)
+      state: row[10],          // State (Index 10: OPEN/CLOSED)
       labels: row[4],         // Labels (Index 4)
     }));
 
