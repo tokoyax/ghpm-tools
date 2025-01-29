@@ -14,6 +14,11 @@ function generateBurndownChartWithCompletionLog() {
   const chartSheetName = settings['バーンダウンチャートデータ生成設定']['バーンダウンチャートデータ出力シート名'] || 'BurndownChart';
   const sprintName = settings['バーンダウンチャートデータ生成設定']['対象Sprint名'];
   const completedStatuses = (settings['バーンダウンチャートデータ生成設定']['完了ステータス'] || "").split(',').map(s => s.trim());
+  const workingStatuses = (settings['バーンダウンチャートデータ生成設定']['作業対象ステータス'] || "").split(',').map(s => s.trim());
+  
+  // 集計対象のステータス（完了ステータス + 作業対象ステータス）
+  const targetStatuses = [...completedStatuses, ...workingStatuses];
+
   const token = getGitHubToken();
   const owner = settings['基本設定']['リポジトリのオーナー'];
   const repo = settings['基本設定']['リポジトリ名'];
@@ -27,7 +32,13 @@ function generateBurndownChartWithCompletionLog() {
 
   if (!sheet) {
     sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(chartSheetName);
-    const sprintHeader = [['Sprint Name'], ['Sprint Start Date'], ['Sprint End Date'], ['Total Story Points'], ['Total Issue Count']];
+    const sprintHeader = [
+      ['Sprint Name'],
+      ['Sprint Start Date'],
+      ['Sprint End Date'],
+      ['Total Story Points'],
+      ['Total Issue Count']
+    ];
     const burndownHeader = ['Date', 'Completed Story Points', 'Remaining Story Points', 'Completed Issue Count', 'Remaining Issue Count', 'Is Working Day'];
     sheet.getRange(1, 1, sprintHeader.length, 1).setValues(sprintHeader);
     sheet.getRange(7, 1, 1, burndownHeader.length).setValues([burndownHeader]);
@@ -77,22 +88,54 @@ function generateBurndownChartWithCompletionLog() {
     completedIssueNumbers: new Set() // 完了した課題番号を追跡
   }));
 
-  // まず、全課題の合計を計算
+  // まず、全課題の合計を計算（Sprint Target Issues と同じフィルタリング基準を使用）
   const issueTracker = new Set();
+
+  // 最新のステータスを取得するための一時マップ
+  const latestIssueStatus = new Map();
   for (let i = 1; i < dataRange.length; i++) {
     const row = dataRange[i];
     const sprint = row[sprintIndex];
-    const estimate = row[estimateIndex] || 0;
     const issueNumber = row[issueNumberIndex];
+    const importDate = new Date(row[dateIndex]);
 
     if (!issueNumber || sprint !== sprintName) continue;
 
-    if (!issueTracker.has(issueNumber)) {
-      totalStoryPoints += estimate;
-      totalIssues += 1;
-      issueTracker.add(issueNumber);
+    // 最新のステータスを追跡
+    const currentLatest = latestIssueStatus.get(issueNumber);
+    if (!currentLatest || importDate > currentLatest.date) {
+      latestIssueStatus.set(issueNumber, {
+        date: importDate,
+        status: row[statusIndex],
+        estimate: row[estimateIndex] || 0,
+        title: row[titleIndex]
+      });
     }
   }
+
+  // 集計対象の課題のみをカウント
+  for (const [number, data] of latestIssueStatus) {
+    const isTargetIssue = targetStatuses.some(s => data.status.trim() === s.trim());
+    if (isTargetIssue) {
+      totalStoryPoints += data.estimate;
+      totalIssues += 1;
+      issueTracker.add(number);
+    }
+  }
+
+  // 集計対象課題のデータを作成（latestIssueStatus を使用）
+  const targetIssuesData = Array.from(issueTracker)
+    .map(number => {
+      const data = latestIssueStatus.get(number);
+      return [
+        number,
+        data.title,
+        data.status,
+        data.estimate,
+        `https://github.com/${owner}/${repo}/issues/${number}`
+      ];
+    })
+    .sort((a, b) => a[0] - b[0]); // Issue Number でソート
 
   // 完了状態の計算を修正
   const completedIssues = new Map(); // 課題の最新状態を追跡
@@ -174,45 +217,92 @@ function generateBurndownChartWithCompletionLog() {
     ];
   });
 
-  // データ出力
+  // スプリント情報のヘッダーと値を設定
+  const sprintHeader = [
+    ['Sprint Name'],
+    ['Sprint Start Date'],
+    ['Sprint End Date'],
+    ['Total Story Points'],
+    ['Total Issue Count'],
+    [''], // 空白行を追加（背景色なし）
+    HEADERS.BURNDOWN // Chart Dataのヘッダーを直接ここで設定
+  ];
+  
+  // ヘッダーの設定（最初の5行のみ）
+  sheet.getRange(1, 1, 5, 1)
+    .setValues(sprintHeader.slice(0, 5))
+    .setFontWeight('bold')
+    .setBackground(STYLE.HEADER_BACKGROUND);
+
+  // 空白行の設定（背景色なし）
+  sheet.getRange(6, 1).setValue('');
+
+  // バーンダウンデータのヘッダー
+  sheet.getRange(7, 1, 1, HEADERS.BURNDOWN.length)
+    .setValues([HEADERS.BURNDOWN])
+    .setFontWeight('bold')
+    .setBackground(STYLE.HEADER_BACKGROUND);
+
+  // バーンダウンデータの出力
   sheet.getRange(8, 1, outputData.length, outputData[0].length).setValues(outputData);
 
-  // スプリント情報のヘッダーと値を設定
-  const sprintHeader = [['Sprint Name'], ['Sprint Start Date'], ['Sprint End Date'], ['Total Story Points'], ['Total Issue Count']];
-  sheet.getRange(1, 1, sprintHeader.length, 1).setValues(sprintHeader);
-  sheet.getRange(1, 2).setValue(sprintName);
-  sheet.getRange(2, 2).setValue(sprintDates.startDate);
-  sheet.getRange(3, 2).setValue(sprintDates.endDate);
-  sheet.getRange(4, 2).setValue(totalStoryPoints);
-  sheet.getRange(5, 2).setValue(totalIssues);
+  // 完了課題ログのセクションタイトル
+  const completionLogStartRow = 8 + outputData.length + 2;
+  const completionLogTitle = ['Completed Issues'];
+  sheet.getRange(completionLogStartRow, 1)
+    .setValue(completionLogTitle)
+    .setFontWeight('bold')
+    .setBackground(STYLE.HEADER_BACKGROUND);
 
-  // ヘッダーの書式設定
-  sheet.getRange('A1:A5').setFontWeight('bold').setBackground('#f4f4f4');
+  // 完了課題ログのヘッダー（Date列は不要）
+  const completionLogHeader = ['Issue Number', 'Issue Title', 'Status', 'Story Points', 'Issue URL'];
+  sheet.getRange(completionLogStartRow + 1, 1, 1, completionLogHeader.length)
+    .setValues([completionLogHeader])
+    .setFontWeight('bold')
+    .setBackground(STYLE.HEADER_BACKGROUND);
 
-  // 完了ログのヘッダーを定義
-  const completionLogHeader = ['Date', 'Issue Number', 'Issue Title', 'Status', 'Story Points', 'Issue URL'];
-  
-  // 完了ログの作成
-  const completionLog = Array.from(completedIssues.entries())
-    .filter(([_, issue]) => issue.isCompleted)
+  // 完了課題データの出力（Date列を除外）
+  const completionLogData = Array.from(completedIssues.entries())
+    .filter(([_, issue]) => completedStatuses.some(s => issue.status.trim() === s.trim()))
     .map(([number, issue]) => [
-      Utilities.formatDate(issue.importDate, 'Asia/Tokyo', 'yyyy/MM/dd'),
       number,
       issue.title,
       issue.status,
       issue.estimate,
       `https://github.com/${owner}/${repo}/issues/${number}`
     ]);
-
-  // 完了ログの出力
-  const completionLogStartRow = 8 + outputData.length + 2;
-  sheet.getRange(completionLogStartRow, 1, 1, completionLogHeader.length)
-    .setValues([completionLogHeader])
-    .setFontWeight('bold')
-    .setBackground('#f4f4f4');  // スプリントヘッダーと同じ背景色を設定
-  if (completionLog.length > 0) {
-    sheet.getRange(completionLogStartRow + 1, 1, completionLog.length, completionLog[0].length).setValues(completionLog);
+  if (completionLogData.length > 0) {
+    sheet.getRange(completionLogStartRow + 2, 1, completionLogData.length, completionLogData[0].length)
+      .setValues(completionLogData);
   }
+
+  // 集計対象課題のセクションタイトル
+  const targetIssuesStartRow = completionLogStartRow + completionLogData.length + 3;
+  const targetIssuesTitle = ['Sprint Target Issues'];
+  sheet.getRange(targetIssuesStartRow, 1)
+    .setValue(targetIssuesTitle)
+    .setFontWeight('bold')
+    .setBackground(STYLE.HEADER_BACKGROUND);
+
+  // 集計対象課題のヘッダー
+  const targetIssuesHeader = ['Issue Number', 'Issue Title', 'Current Status', 'Story Points', 'Issue URL'];
+  sheet.getRange(targetIssuesStartRow + 1, 1, 1, targetIssuesHeader.length)
+    .setValues([targetIssuesHeader])
+    .setFontWeight('bold')
+    .setBackground(STYLE.HEADER_BACKGROUND);
+
+  // 集計対象課題データの出力
+  if (targetIssuesData.length > 0) {
+    sheet.getRange(targetIssuesStartRow + 2, 1, targetIssuesData.length, targetIssuesData[0].length)
+      .setValues(targetIssuesData);
+  }
+
+  // 値の設定
+  sheet.getRange(1, 2).setValue(sprintName);
+  sheet.getRange(2, 2).setValue(sprintDates.startDate);
+  sheet.getRange(3, 2).setValue(sprintDates.endDate);
+  sheet.getRange(4, 2).setValue(totalStoryPoints);
+  sheet.getRange(5, 2).setValue(totalIssues);
 
   // グラフの追加
   addBurndownChart(sheet, { dailyData, sprintName, sprintDates });
@@ -303,7 +393,7 @@ function addBurndownChart(sheet, data) {
     if (!isWeekend) {
       workingDays++;
     }
-    return isWeekend;
+    return { isWeekend, date: currentDate };
   });
 
   // 1稼働日あたりの減少ポイントを計算
@@ -311,12 +401,23 @@ function addBurndownChart(sheet, data) {
   
   // 理想線データを生成
   let remainingPoints = startPoints;
-  const idealBurndown = idealData.map((isWeekend, index) => {
+  let lastWorkdayPoints = 0;
+  const idealBurndown = idealData.map((day, index) => {
     if (index === 0) return [startPoints]; // 初日
-    if (isWeekend) return [remainingPoints]; // 週末は前日と同じ
     
-    remainingPoints -= pointsPerWorkingDay;
-    return [Math.max(0, remainingPoints)]; // マイナスにならないよう0で制限
+    if (!day.isWeekend) {
+      remainingPoints = Math.max(0, startPoints - (pointsPerWorkingDay * workingDays * (index / totalDays)));
+      lastWorkdayPoints = remainingPoints;
+    } else {
+      remainingPoints = lastWorkdayPoints; // 週末は前の稼働日と同じ値を維持
+    }
+
+    // 最終日は0にする
+    if (index === totalDays - 1) {
+      remainingPoints = 0;
+    }
+
+    return [remainingPoints];
   });
   
   // G列のヘッダーを設定
@@ -364,13 +465,6 @@ function addBurndownChart(sheet, data) {
       position: 'top'
     })
     .build();
-
-  // デバッグ用のログ出力
-  Logger.log('Total Days:', totalDays);
-  Logger.log('Working Days:', workingDays);
-  Logger.log('Start Points:', startPoints);
-  Logger.log('Points per Working Day:', pointsPerWorkingDay);
-  Logger.log('Ideal Burndown:', idealBurndown);
 
   // 既存のグラフがあれば削除
   const charts = sheet.getCharts();
