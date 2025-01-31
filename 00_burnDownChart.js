@@ -9,10 +9,10 @@ const STYLE = {
   HEADER_BACKGROUND: '#f4f4f4'
 };
 
-function generateBurndownChartWithCompletionLog() {
+function generateBurndownChartWithCompletionLog(targetSprintName = null) {
   const settings = getSettingsFromSheet();
-  const chartSheetName = settings['バーンダウンチャートデータ生成設定']['バーンダウンチャートデータ出力シート名'] || 'BurndownChart';
-  const sprintName = settings['バーンダウンチャートデータ生成設定']['対象Sprint名'];
+  const baseChartSheetName = settings['バーンダウンチャートデータ生成設定']['バーンダウンチャートデータ出力シート名'] || 'BurndownChart';
+  const sprintName = targetSprintName || settings['バーンダウンチャートデータ生成設定']['対象Sprint名'];
   const completedStatuses = (settings['バーンダウンチャートデータ生成設定']['完了ステータス'] || "").split(',').map(s => s.trim());
   const workingStatuses = (settings['バーンダウンチャートデータ生成設定']['作業対象ステータス'] || "").split(',').map(s => s.trim());
   
@@ -23,28 +23,33 @@ function generateBurndownChartWithCompletionLog() {
   const owner = settings['基本設定']['リポジトリのオーナー'];
   const repo = settings['基本設定']['リポジトリ名'];
 
-  if (!sprintName || completedStatuses.length === 0) {
-    Logger.log('対象スプリント名または完了ステータスが設定されていません。');
+  if (!sprintName) {
+    Logger.log('対象スプリント名が設定されていません。');
     return;
   }
+
+  if (completedStatuses.length === 0) {
+    Logger.log('完了ステータスが設定されていません。');
+    return;
+  }
+
+  // シート名を生成（スプリント名のプレフィックスを追加）
+  const chartSheetName = `${sanitizeSheetName(sprintName)}_${baseChartSheetName}`;
 
   let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(chartSheetName);
 
   if (!sheet) {
     sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(chartSheetName);
-    const sprintHeader = [
-      ['Sprint Name'],
-      ['Sprint Start Date'],
-      ['Sprint End Date'],
-      ['Total Story Points'],
-      ['Total Issue Count']
-    ];
-    const burndownHeader = ['Date', 'Completed Story Points', 'Remaining Story Points', 'Completed Issue Count', 'Remaining Issue Count', 'Is Working Day'];
-    sheet.getRange(1, 1, sprintHeader.length, 1).setValues(sprintHeader);
-    sheet.getRange(7, 1, 1, burndownHeader.length).setValues([burndownHeader]);
-    sheet.getRange('A1:A5').setFontWeight('bold').setBackground('#f4f4f4');
-    sheet.getRange('A7:F7').setFontWeight('bold').setBackground('#f4f4f4');
+  } else {
+    sheet.clear(); // シートをクリアして書式をリセット
   }
+
+  sheet.getRange(1, 1, HEADERS.SPRINT.length, 1).setValues(
+    HEADERS.SPRINT.map(header => [header])
+  );
+  sheet.getRange(7, 1, 1, HEADERS.BURNDOWN.length).setValues([HEADERS.BURNDOWN]);
+  sheet.getRange('A1:A5').setFontWeight('bold').setBackground('#f4f4f4');
+  sheet.getRange('A7:F7').setFontWeight('bold').setBackground('#f4f4f4');
 
   const sprintDates = fetchSprintDates(owner, repo, sprintName, token);
   if (!sprintDates) {
@@ -197,25 +202,21 @@ function generateBurndownChartWithCompletionLog() {
   }
 
   // 出力データの生成
-  let remainingStoryPoints = totalStoryPoints;
-  let remainingIssues = totalIssues;
-  const outputData = dailyData.map((data, index) => {
-    const date = new Date(sprintStartDate);
-    date.setDate(date.getDate() + index);
-    const isWorkingDay = ![0, 6].includes(date.getDay());
-
-    remainingStoryPoints = totalStoryPoints - data.completedStoryPoints;
-    remainingIssues = totalIssues - data.completedIssues;
-
-    return [
-      Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy/MM/dd'),
-      data.completedStoryPoints,
-      remainingStoryPoints,
-      data.completedIssues,
-      remainingIssues,
-      isWorkingDay,
-    ];
-  });
+  const outputData = createBurndownData(
+    sprintStartDate,
+    sprintEndDate,
+    Array.from(completedIssues.entries())
+      .filter(([_, issue]) => issue.isCompleted)
+      .map(([number, issue]) => ({
+        number,
+        completedAt: issue.importDate,
+        estimate: issue.estimate
+      })),
+    Array.from(issueTracker).map(number => ({
+      number,
+      estimate: latestIssueStatus.get(number).estimate
+    }))
+  );
 
   // スプリント情報のヘッダーと値を設定
   const sprintHeader = [
@@ -375,103 +376,108 @@ function fetchSprintDates(owner, repo, sprintName, token) {
 }
 
 function addBurndownChart(sheet, data) {
-  // データ範囲を取得（日付と残りのストーリーポイントのみ）
-  const dateRange = sheet.getRange(8, 1, data.dailyData.length, 1); // A列：日付
-  const remainingPointsRange = sheet.getRange(8, 3, data.dailyData.length, 1); // C列：残りのストーリーポイント
-  
-  // 理想線のデータを作成
-  const totalDays = data.dailyData.length;
-  const startPoints = sheet.getRange('B4').getValue(); // Total Story Points from header
-  
-  // 稼働日数を計算（週末を除く）
-  let workingDays = 0;
-  const idealData = Array(totalDays).fill().map((_, index) => {
-    const currentDate = new Date(data.sprintDates.startDate);
-    currentDate.setDate(currentDate.getDate() + index);
-    const isWeekend = [0, 6].includes(currentDate.getDay()); // 0=日曜, 6=土曜
+    const today = new Date();
     
-    if (!isWeekend) {
-      workingDays++;
-    }
-    return { isWeekend, date: currentDate };
-  });
-
-  // 1稼働日あたりの減少ポイントを計算
-  const pointsPerWorkingDay = startPoints / workingDays;
-  
-  // 理想線データを生成
-  let remainingPoints = startPoints;
-  let lastWorkdayPoints = 0;
-  const idealBurndown = idealData.map((day, index) => {
-    if (index === 0) return [startPoints]; // 初日
+    // データ範囲を取得（実績は現在日付まで、理想線は全期間）
+    const allData = sheet.getRange(8, 1, data.dailyData.length, 7).getValues();
+    const actualData = allData.filter(row => new Date(row[0]) <= today);
+    const rowCount = allData.length; // 全期間の行数
+    const actualRowCount = actualData.length; // 現在日付までの行数
     
-    if (!day.isWeekend) {
-      remainingPoints = Math.max(0, startPoints - (pointsPerWorkingDay * workingDays * (index / totalDays)));
-      lastWorkdayPoints = remainingPoints;
-    } else {
-      remainingPoints = lastWorkdayPoints; // 週末は前の稼働日と同じ値を維持
-    }
+    // 実績データの範囲を取得
+    const dateRange = sheet.getRange(8, 1, actualRowCount, 1); // A列：日付
+    const remainingPointsRange = sheet.getRange(8, 3, actualRowCount, 1); // C列：残りのストーリーポイント
+    
+    // 理想線のデータを作成（全期間）
+    const startPoints = sheet.getRange('B4').getValue();
+    
+    // 稼働日数を計算（週末を除く）
+    let workingDays = 0;
+    const idealData = allData.map((row, index) => {
+        const currentDate = new Date(row[0]);
+        const isWeekend = [0, 6].includes(currentDate.getDay());
+        
+        if (!isWeekend) {
+            workingDays++;
+        }
+        return { isWeekend, date: currentDate };
+    });
 
-    // 最終日は0にする
-    if (index === totalDays - 1) {
-      remainingPoints = 0;
-    }
+    // 1稼働日あたりの減少ポイントを計算
+    const pointsPerWorkingDay = startPoints / workingDays;
+    
+    // 理想線データを生成（全期間）
+    let remainingPoints = startPoints;
+    let lastWorkdayPoints = 0;
+    const idealBurndown = idealData.map((day, index) => {
+        if (index === 0) return [startPoints];
+        
+        if (!day.isWeekend) {
+            remainingPoints = Math.max(0, startPoints - (pointsPerWorkingDay * workingDays * (index / rowCount)));
+            lastWorkdayPoints = remainingPoints;
+        } else {
+            remainingPoints = lastWorkdayPoints;
+        }
 
-    return [remainingPoints];
-  });
-  
-  // G列のヘッダーを設定
-  sheet.getRange(7, 7).setValue('Ideal Burndown')
-    .setFontWeight('bold')
-    .setBackground(STYLE.HEADER_BACKGROUND);
-  
-  // G列に理想線データを配置
-  const idealRange = sheet.getRange(8, 7, totalDays, 1);
-  idealRange.setValues(idealBurndown);
-  
-  // グラフを作成
-  const chart = sheet.newChart()
-    .setChartType(Charts.ChartType.LINE)
-    .addRange(dateRange)      // X軸の日付
-    .addRange(remainingPointsRange)  // 実際の残りのストーリーポイント
-    .addRange(idealRange)     // 理想線
-    .setPosition(1, 8, 0, 0)  // 1行目、H列から配置
-    .setOption('title', `${data.sprintName} Burndown Chart`)
-    .setOption('series', {
-      0: { // 実際の線（オレンジ）
-        targetAxisIndex: 0,
-        labelInLegend: 'Remaining Story Points',
-        color: '#ed6c02',
-        lineWidth: 3,
-        pointSize: 0
-      },
-      1: { // 理想線（グレー点線）
-        targetAxisIndex: 0,
-        labelInLegend: 'Ideal Burndown',
-        color: '#666666',
-        lineWidth: 1,
-        lineDashType: 'dot'  // 点線パターン（'solid', 'dot', 'mediumDash', 'mediumDashDot', 'longDash', 'longDashDot'から選択）
-      }
-    })
-    .setOption('hAxis', {
-      title: 'Date',
-      format: 'yyyy/MM/dd'
-    })
-    .setOption('vAxis', {
-      title: 'Story Points',
-      minValue: 0
-    })
-    .setOption('legend', {
-      position: 'top'
-    })
-    .build();
+        if (index === rowCount - 1) {
+            remainingPoints = 0;
+        }
 
-  // 既存のグラフがあれば削除
-  const charts = sheet.getCharts();
-  charts.forEach(existingChart => sheet.removeChart(existingChart));
-  
-  // 新しいグラフを追加
-  sheet.insertChart(chart);
+        return [remainingPoints];
+    });
+    
+    // G列のヘッダーを設定
+    sheet.getRange(7, 7).setValue('Ideal Burndown')
+        .setFontWeight('bold')
+        .setBackground(STYLE.HEADER_BACKGROUND);
+    
+    // G列に理想線データを配置（全期間）
+    const idealRange = sheet.getRange(8, 7, rowCount, 1);
+    idealRange.setValues(idealBurndown);
+    
+    // グラフを作成
+    const chart = sheet.newChart()
+        .setChartType(Charts.ChartType.LINE)
+        .addRange(sheet.getRange(8, 1, rowCount, 1))  // X軸の日付（全期間）
+        .addRange(remainingPointsRange)  // 実際の残りのストーリーポイント（現在日付まで）
+        .addRange(idealRange)     // 理想線（全期間）
+        .setPosition(1, 8, 0, 0)
+        .setOption('title', `${data.sprintName} Burndown Chart`)
+        .setOption('series', {
+            0: {
+                targetAxisIndex: 0,
+                labelInLegend: 'Remaining Story Points',
+                color: '#ed6c02',
+                lineWidth: 3,
+                pointSize: 0
+            },
+            1: {
+                targetAxisIndex: 0,
+                labelInLegend: 'Ideal Burndown',
+                color: '#666666',
+                lineWidth: 1,
+                lineDashType: 'dot'
+            }
+        })
+        .setOption('hAxis', {
+            title: 'Date',
+            format: 'yyyy/MM/dd'
+        })
+        .setOption('vAxis', {
+            title: 'Story Points',
+            minValue: 0
+        })
+        .setOption('legend', {
+            position: 'top'
+        })
+        .build();
+
+    // 既存のグラフがあれば削除
+    const charts = sheet.getCharts();
+    charts.forEach(existingChart => sheet.removeChart(existingChart));
+    
+    // 新しいグラフを追加
+    sheet.insertChart(chart);
 }
 
 function outputToSheet(sheet, data) {
@@ -479,4 +485,166 @@ function outputToSheet(sheet, data) {
 
   // グラフの追加
   addBurndownChart(sheet, data);
+}
+
+function createBurndownData(startDate, endDate, completedIssues, targetIssues) {
+  const totalStoryPoints = targetIssues.reduce((sum, issue) => sum + (issue.estimate || 0), 0);
+  const totalIssues = targetIssues.length;
+  const outputData = [];
+
+  let currentDate = new Date(startDate);
+  while (currentDate <= endDate) {
+    const date = new Date(currentDate);
+    const isWorkingDay = ![0, 6].includes(date.getDay());
+
+    // その日までに完了している課題を集計
+    const completedByDate = completedIssues.filter(issue => 
+      issue.completedAt <= date
+    );
+    
+    const completedStoryPoints = completedByDate.reduce((sum, issue) => 
+      sum + (issue.estimate || 0), 0
+    );
+    const completedIssueCount = completedByDate.length;
+
+    outputData.push([
+      Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy/MM/dd'),
+      completedStoryPoints,
+      totalStoryPoints - completedStoryPoints,
+      completedIssueCount,
+      totalIssues - completedIssueCount,
+      isWorkingDay,
+    ]);
+
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return outputData;
+}
+
+function createBurnDownDataset(sprintData) {
+    const today = new Date();
+    
+    return {
+        labels: sprintData.map(d => d.date).filter(date => new Date(date) <= today),
+        datasets: [
+            {
+                label: 'Remaining Story Points',
+                data: sprintData
+                    .filter(d => new Date(d.date) <= today)
+                    .map(d => d.remainingStoryPoints),
+                borderColor: 'rgb(255, 99, 132)',
+                tension: 0.1
+            },
+            {
+                label: 'Ideal Burndown',
+                data: sprintData
+                    .filter(d => new Date(d.date) <= today)
+                    .map(d => d.idealBurndown),
+                borderColor: 'rgb(201, 203, 207)',
+                borderDash: [10, 5],
+                tension: 0.1
+            }
+        ]
+    };
+}
+
+function sanitizeSheetName(name) {
+  if (!name) return ''; // nameがnullまたはundefinedの場合は空文字を返す
+  return name.replace(/\s+/g, ''); // スペースを除去
+}
+
+// 定期実行用の新規関数追加
+function scheduledBurndownUpdate() {
+  const settings = getSettingsFromSheet();
+  const token = getGitHubToken();
+  const owner = settings['基本設定']['リポジトリのオーナー'];
+  const repo = settings['基本設定']['リポジトリ名'];
+  
+  // 現在日付を含むスプリントを検索
+  const currentDate = new Date();
+  const activeSprint = findActiveSprint(owner, repo, currentDate, token);
+  
+  if (activeSprint) {
+    generateBurndownChartWithCompletionLog(activeSprint.title);
+  } else {
+    Logger.log('現在アクティブなスプリントが見つかりませんでした');
+  }
+}
+
+// アクティブなスプリント検索関数
+function findActiveSprint(owner, repo, targetDate, token) {
+  const query = `
+    query ($owner: String!, $repo: String!) {
+      repository(owner: $owner, name: $repo) {
+        projectsV2(first: 10) {
+          nodes {
+            title
+            items(first: 100) {
+              nodes {
+                fieldValues(first: 10) {
+                  nodes {
+                    __typename
+                    ... on ProjectV2ItemFieldIterationValue {
+                      title
+                      startDate
+                      duration
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const variables = { owner, repo };
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + token },
+    payload: JSON.stringify({ query, variables }),
+  };
+
+  const response = UrlFetchApp.fetch('https://api.github.com/graphql', options);
+  const data = JSON.parse(response.getContentText());
+
+  if (data.errors) {
+    Logger.log(`GraphQL errors: ${JSON.stringify(data.errors)}`);
+    return null;
+  }
+
+  const projects = data.data.repository.projectsV2.nodes;
+
+  for (const project of projects) {
+    for (const item of project.items.nodes) {
+      for (const field of item.fieldValues.nodes) {
+        if (field.__typename === "ProjectV2ItemFieldIterationValue") {
+          const startDate = new Date(field.startDate);
+          const duration = field.duration;
+          const endDate = new Date(startDate.getTime() + (duration - 1) * 24 * 60 * 60 * 1000);
+          
+          if (startDate <= targetDate && targetDate <= endDate) {
+            return {
+              title: field.title,
+              startDate: startDate.toISOString().split('T')[0],
+              endDate: endDate.toISOString().split('T')[0]
+            };
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// メニューに定期実行用項目追加
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('バーンダウンチャート')
+    .addItem('チャート生成', 'generateBurndownChartWithCompletionLog')
+    .addItem('定期実行テスト', 'scheduledBurndownUpdate')  // 追加
+    .addToUi();
 }
