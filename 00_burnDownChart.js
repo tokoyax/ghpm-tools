@@ -247,6 +247,9 @@ function generateBurndownChartWithCompletionLog(targetSprintName = null) {
   // バーンダウンデータの出力
   sheet.getRange(8, 1, outputData.length, outputData[0].length).setValues(outputData);
 
+  // データを出力した後、日付列のフォーマットを設定
+  sheet.getRange(8, 1, outputData.length, 1).setNumberFormat('m"/"d');
+
   // 完了課題ログのセクションタイトル
   const completionLogStartRow = 8 + outputData.length + 2;
   const completionLogTitle = ['Completed Issues'];
@@ -435,12 +438,12 @@ function addBurndownChart(sheet, data) {
     const idealRange = sheet.getRange(8, 7, rowCount, 1);
     idealRange.setValues(idealBurndown);
     
-    // グラフを作成
+    // グラフを作成する部分を修正
     const chart = sheet.newChart()
         .setChartType(Charts.ChartType.LINE)
-        .addRange(sheet.getRange(8, 1, rowCount, 1))  // X軸の日付（全期間）
-        .addRange(remainingPointsRange)  // 実際の残りのストーリーポイント（現在日付まで）
-        .addRange(idealRange)     // 理想線（全期間）
+        .addRange(sheet.getRange(8, 1, rowCount, 1))
+        .addRange(remainingPointsRange)
+        .addRange(idealRange)
         .setPosition(1, 8, 0, 0)
         .setOption('title', `${data.sprintName} Burndown Chart`)
         .setOption('series', {
@@ -448,28 +451,44 @@ function addBurndownChart(sheet, data) {
                 targetAxisIndex: 0,
                 labelInLegend: 'Remaining Story Points',
                 color: '#ed6c02',
-                lineWidth: 3,
-                pointSize: 0
+                lineWidth: 2,
+                pointSize: 4
             },
             1: {
                 targetAxisIndex: 0,
                 labelInLegend: 'Ideal Burndown',
                 color: '#666666',
                 lineWidth: 1,
-                lineDashType: 'dot'
+                lineDashStyle: 'dot',
+                pointSize: 2
             }
         })
         .setOption('hAxis', {
             title: 'Date',
-            format: 'yyyy/MM/dd'
+            gridlines: {
+                count: rowCount,
+                color: '#e0e0e0'
+            },
+            minorGridlines: {
+                count: 0
+            },
+            textStyle: {
+                fontSize: 10
+            }
         })
         .setOption('vAxis', {
             title: 'Story Points',
-            minValue: 0
+            minValue: 0,
+            gridlines: {
+                count: 7
+            }
         })
         .setOption('legend', {
-            position: 'top'
+            position: 'top',
+            alignment: 'center'
         })
+        .setOption('width', 800)
+        .setOption('height', 400)
         .build();
 
     // 既存のグラフがあれば削除
@@ -508,7 +527,7 @@ function createBurndownData(startDate, endDate, completedIssues, targetIssues) {
     const completedIssueCount = completedByDate.length;
 
     outputData.push([
-      Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy/MM/dd'),
+      Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy/MM/dd'),  // 文字列として保存
       completedStoryPoints,
       totalStoryPoints - completedStoryPoints,
       completedIssueCount,
